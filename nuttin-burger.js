@@ -5,10 +5,10 @@ function installNuttinBurger(win, assets) {
   const doc=win.document;
   const CFG={speed:125,spawnEvery:.78,catchWidth:53,moveSpeed:1800,stackGap:12,lives:3,points:100,hazardChance:.13,kChance:.035,kPoints:500,heartSeconds:3};
   const FOODS={"bun":{"label":"Top bun","rect":[16,65,500,250],"h":45},"base":{"label":"Bottom bun","rect":[524,84,485,230],"h":28},"patty":{"label":"Patty","rect":[1022,70,506,252],"h":30},"cheese":{"label":"Cheese","rect":[17,380,499,250],"h":20},"lettuce":{"label":"Lettuce","rect":[521,370,507,254],"h":24},"tomato":{"label":"Tomato","rect":[1033,380,483,258],"h":24},"onion":{"label":"Onion","rect":[18,678,499,262],"h":18},"pickles":{"label":"Pickles","rect":[531,680,486,267],"h":18},"sauce":{"label":"Sauce","rect":[1029,679,500,264],"h":16}};
-  const HAZARDS=[{"id":"socks","label":"crusty socks","rect":[10,132,306,407]},{"id":"jocks","label":"dirty jocks","rect":[317,174,356,350]},{"id":"wash","label":"ten-in-one wash","rect":[675,92,220,440]},{"id":"chair","label":"a camping chair","rect":[896,161,327,374]},{"id":"tv","label":"a broken TV","rect":[1223,126,312,409]},{"id":"pizza","label":"mouldy pizza","rect":[9,540,330,391]},{"id":"plant","label":"a dying plant","rect":[340,539,282,396],"clip":[[340,539],[622,539],[622,692],[600,730],[602,935],[340,935]]},{"id":"weights","label":"gym weights","rect":[602,620,341,293],"clip":[[663,620],[943,620],[943,913],[602,913],[602,738]]},{"id":"towel","label":"a dirty towel","rect":[916,552,341,396],"clip":[[959,552],[1257,552],[1257,948],[916,948],[916,817],[957,723]]},{"id":"loofah","label":"a dirty loofah","rect":[1256,566,279,390]}];
+  const HAZARDS=[{"id":"socks","label":"crusty socks","rect":[10,132,306,407]},{"id":"jocks","label":"dirty jocks","rect":[317,174,356,350]},{"id":"wash","label":"ten-in-one wash","rect":[675,92,220,440]},{"id":"chair","label":"a camping chair","rect":[896,161,327,374],"size":112},{"id":"tv","label":"a broken TV","rect":[1223,126,312,409],"size":120},{"id":"pizza","label":"mouldy pizza","rect":[9,540,330,391]},{"id":"plant","label":"a dying plant","rect":[340,539,282,396],"clip":[[340,539],[622,539],[622,692],[600,730],[602,935],[340,935]]},{"id":"weights","label":"gym weights","rect":[620,620,296,293],"clip":[[663,620],[916,620],[916,913],[620,913],[620,738]]},{"id":"towel","label":"a dirty towel","rect":[916,552,341,396],"clip":[[959,552],[1257,552],[1257,948],[916,948],[916,817],[957,723]]},{"id":"loofah","label":"a dirty loofah","rect":[1256,566,279,390]}];
   let direction=1,runClock=0,heartTime=0,deathTime=0,deathReason='';
   const types=['patty','cheese','lettuce','tomato','onion','pickles','sauce'];
-  let root,canvas,ctx,raf=0,previous=0,active=false,mode='intro',W=800,H=600,player=400,target=400,items=[],stack=[],particles=[],keys=new Set(),level=1,score=0,lives=3,needs={},got={},spawnClock=0,elapsed=0,lastFocus,best=0,resizeObserver,loading;
+  let root,canvas,ctx,raf=0,previous=0,active=false,mode='intro',W=800,H=600,player=400,target=400,items=[],stack=[],particles=[],keys=new Set(),level=1,score=0,lives=3,seq=[],stepIdx=0,spawnClock=0,elapsed=0,lastFocus,best=0,resizeObserver,loading;
   try{best=Number(win.localStorage.getItem('kland-nuttin-best-v1'))||0;}catch(e){}
   const atlas=new win.Image(),josh=new win.Image();atlas.src=assets.ingredients;josh.src=assets.josh;
   const hazards=new win.Image(),animation=new win.Image(),kBonus=new win.Image(),kitchen=new win.Image(),runSheet=new win.Image();
@@ -37,7 +37,7 @@ function installNuttinBurger(win, assets) {
   #nb-game .nb-food{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:700;min-height:38px;color:#3a2530}
   #nb-game .nb-food canvas{width:54px;height:32px;flex-shrink:0;filter:drop-shadow(0 2px 0 rgba(36,24,36,.10))}
   #nb-game .nb-food b{margin-left:auto;font-size:13px;font-weight:800;background:#fff;border:1.5px solid rgba(36,24,36,.16);border-radius:8px;padding:3px 8px}
-  #nb-game .nb-food.done{color:#9a7d8c}
+  #nb-game .nb-food.done{color:#9a7d8c}#nb-game .nb-food.done span{text-decoration:line-through}#nb-game .nb-food.now{background:#fff3f7;border-color:#f32982;box-shadow:0 0 0 2px rgba(243,41,130,.18)}
   #nb-game .nb-food.done b{background:#f32982;border-color:#c91965;color:#fff}
   #nb-game .nb-note{font-size:12px;line-height:1.5;color:#8a6f7e;margin:12px 0}
   #nb-game .nb-label{font-family:"Dela Gothic One",Arial,sans-serif;font-size:9.5px;letter-spacing:1.6px;color:#c91965}
@@ -67,7 +67,7 @@ function installNuttinBurger(win, assets) {
   function el(tag,cls,text){const e=doc.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;}
   function ensureFonts(){if(doc.getElementById('nb-fonts'))return;const l=doc.createElement('link');l.id='nb-fonts';l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Work+Sans:wght@400;600;700;800;900&display=swap';doc.head.append(l);}
   const SFX={right:assets.sfxRight,wrong:assets.sfxWrong,k:assets.sfxK,level:assets.sfxLevel,over:assets.sfxOver};
-  const GAIN={right:.55,wrong:.55,k:.6,level:.5,over:.6};
+  const GAIN={right:.9,wrong:.55,k:.6,level:.5,over:.6};
   const buffers={},fallbacks={};let actx=null;
   let soundOn=true;try{soundOn=win.localStorage.getItem('kland-nuttin-sound-v1')!=='0';}catch(e){}
   function setupAudio(){
@@ -88,7 +88,7 @@ function installNuttinBurger(win, assets) {
   function sprite(c,type,x,y,w=106,h=FOODS[type].h){if(!atlas.complete||!atlas.naturalWidth)return;const r=FOODS[type].rect;c.drawImage(atlas,...r,x-w/2,y-h/2,w,h);}
   function objectSprite(c,it,x,y){
     if(it.type==='hazard'){
-      const h=HAZARDS[it.hazard],r=h.rect,scale=80/Math.max(r[2],r[3]),dx=x-r[2]*scale/2,dy=y-r[3]*scale/2;
+      const h=HAZARDS[it.hazard],r=h.rect,scale=(h.size||80)/Math.max(r[2],r[3]),dx=x-r[2]*scale/2,dy=y-r[3]*scale/2;
       c.save();if(h.clip){c.beginPath();h.clip.forEach(([px,py],i)=>c[i?'lineTo':'moveTo'](dx+(px-r[0])*scale,dy+(py-r[1])*scale));c.closePath();c.clip();}
       c.drawImage(hazards,...r,dx,dy,r[2]*scale,r[3]*scale);c.restore();
       return;
@@ -113,12 +113,14 @@ function installNuttinBurger(win, assets) {
   }
   function endRun(reason){if(mode!=='playing')return;lives=0;deathReason=reason;deathTime=0;heartTime=0;keys.clear();mode='dying';ticket();message(reason);}
   function finishDeath(){playSfx('over');mode='over';overlay('You’re cooked.',deathReason+' '+score+' points. '+(level-1)+' orders served.','Try again',start);}
-  function ticket(){root.querySelector('.nb-order').textContent='Order '+String(level).padStart(2,'0');const list=root.querySelector('.nb-list');list.replaceChildren();for(const t of types){if(!needs[t])continue;const row=el('div','nb-food'+(got[t]>=needs[t]?' done':''));const icon=el('canvas');icon.width=110;icon.height=64;const c=icon.getContext('2d');sprite(c,t,55,32,103,47);row.append(icon,el('span','',FOODS[t].label),el('b','',got[t]+'/'+needs[t]));list.append(row);}root.querySelector('.nb-score').textContent=score.toLocaleString();const livesEl=root.querySelector('.nb-lives');livesEl.replaceChildren();for(let i=0;i<CFG.lives;i++){livesEl.append(el('span','nb-heart'+(i<lives?'':' lost'),i<lives?'♥':'♡'));}livesEl.setAttribute('aria-label',lives+' chances left');root.querySelector('.nb-best').textContent='PERSONAL BEST '+best;root.querySelector('.nb-note').textContent=complete()?'Order ready! Catch a sesame top bun.':'Any order is fine. Dodge extras and save the top bun for last.';}
-  function complete(){return types.every(t=>got[t]>=needs[t]);}
+  function ticket(){root.querySelector('.nb-order').textContent='Order '+String(level).padStart(2,'0');const list=root.querySelector('.nb-list');list.replaceChildren();const chip=(t,done,now,label,num)=>{const row=el('div','nb-food'+(done?' done':'')+(now?' now':''));const icon=el('canvas');icon.width=110;icon.height=64;const c=icon.getContext('2d');sprite(c,t,55,32,103,47);row.append(icon,el('span','',label||FOODS[t].label),el('b','',num));return row;};list.append(chip('base',true,false,'Bottom bun','✓'));seq.forEach((t,i)=>list.append(chip(t,i<stepIdx,i===stepIdx,null,i<stepIdx?'✓':String(i+1))));root.querySelector('.nb-score').textContent=score.toLocaleString();const livesEl=root.querySelector('.nb-lives');livesEl.replaceChildren();for(let i=0;i<CFG.lives;i++){livesEl.append(el('span','nb-heart'+(i<lives?'':' lost'),i<lives?'♥':'♡'));}livesEl.setAttribute('aria-label',lives+' chances left');root.querySelector('.nb-best').textContent='PERSONAL BEST '+best;root.querySelector('.nb-note').textContent=complete()?'Everything but the top bun. Catch a sesame bun!':'Catch them in this order. Anything else costs a heart.';}
+  function nextType(){return seq[stepIdx]||'bun';}
+  function complete(){return seq.length>0&&stepIdx>=seq.length-1;}
+  function makeSeq(){const n=Math.min(8,1+level);const out=[];let last='';for(let i=0;i<n;i++){let t=types[Math.floor(Math.random()*types.length)];if(t===last&&Math.random()<.65)t=types[(types.indexOf(t)+1+Math.floor(Math.random()*(types.length-1)))%types.length];out.push(t);last=t;}out.push('bun');return out;}
   function message(text){root.querySelector('.nb-message').textContent=text;}
   function overlay(title,copy,label,action){const over=root.querySelector('.nb-overlay');over.hidden=false;over.querySelector('h2').textContent=title;over.querySelector('p').textContent=copy;const b=over.querySelector('button');b.textContent=label;b.disabled=false;b.onclick=action;b.focus();}
   function hideOverlay(){root.querySelector('.nb-overlay').hidden=true;canvas.focus();}
-  function order(){needs={patty:1+Math.min(2,Math.floor((level-1)/3)),cheese:1,lettuce:level>=2?1:0,tomato:level>=3?1:0,onion:level>=4?1:0,pickles:level>=5?1:0,sauce:level>=6?1:0};if(level>=5)needs[types[level%types.length]]++;got=Object.fromEntries(types.map(t=>[t,0]));items=[];stack=[];particles=[];spawnClock=.4;elapsed=0;player=W/2;target=player;ticket();message('Catch the ingredients on your ticket');}
+  function order(){seq=makeSeq();stepIdx=0;items=[];stack=[];particles=[];spawnClock=.4;elapsed=0;player=W/2;target=player;ticket();message('Catch the ingredients on your ticket');}
   function start(){unlockAudio();level=1;score=0;lives=CFG.lives;heartTime=0;deathTime=0;runClock=0;direction=1;order();mode='playing';hideOverlay();}
   function pause(){if(mode!=='playing')return;mode='paused';keys.clear();overlay('On your break.','Your burger can wait. Your situationship probably can’t.','Back to work',()=>{mode='playing';hideOverlay();});}
   function close(){if(!active)return;active=false;win.cancelAnimationFrame(raf);resizeObserver?.disconnect();win.removeEventListener('resize',resize);win.removeEventListener('keydown',keydown,true);win.removeEventListener('keyup',keyup,true);doc.removeEventListener('visibilitychange',visibility);win.removeEventListener('blur',blur);root.remove();doc.querySelector('#nb-styles')?.remove();root=null;keys.clear();lastFocus?.focus?.();}
@@ -134,16 +136,17 @@ function installNuttinBurger(win, assets) {
       best=Math.max(best,score);try{win.localStorage.setItem('kland-nuttin-best-v1',String(best));}catch(e){}
       burst(player,it.y,true);message('CAUGHT FEELINGS! +500 points · +1 life');ticket();return;
     }
-if(it.type==='bun'){if(complete()){playSfx('level');stack.push('bun');score+=CFG.points*level;best=Math.max(best,score);try{win.localStorage.setItem('kland-nuttin-best-v1',String(best));}catch(e){}mode='won';ticket();burst(player,it.y,true);message('Order up!');overlay('Big stack energy.',`Order ${level} served. ${score} points. Josh is absolutely putting “executive chef” in his bio.`,'Next order',()=>{level++;order();mode='playing';hideOverlay();});}else mistake('Too soon! Save the top bun for last.');return;}if(got[it.type]<needs[it.type]){playSfx('right');got[it.type]++;stack.push(it.type);burst(player,it.y,true);message(complete()?'Perfect. Now catch a top bun!':'Nice catch. Keep stacking.');ticket();}else mistake('Not on the ticket! Dodge the extras.');}
-  function mistake(text){playSfx('wrong');lives--;burst(player,H-227-stack.length*CFG.stackGap,false);message(text);ticket();if(lives<=0)endRun('Three wrong catches. Josh has been promoted to customer.');}
+if(it.type==='bun'){if(complete()){playSfx('level');stack.push('bun');score+=CFG.points*level;best=Math.max(best,score);try{win.localStorage.setItem('kland-nuttin-best-v1',String(best));}catch(e){}mode='won';ticket();burst(player,it.y,true);message('Order up!');overlay('Big stack energy.',`Order ${level} served. ${score} points. Josh is absolutely putting “executive chef” in his bio.`,'Next order',()=>{level++;order();mode='playing';hideOverlay();});}else mistake('Too soon! Save the top bun for last.');return;}if(it.type===nextType()){playSfx('right');stack.push(it.type);stepIdx++;burst(player,it.y,true);message(complete()?'Perfect. Now catch a top bun!':'Nice. Next: '+FOODS[nextType()].label+'.');ticket();}else mistake('Out of order! You need '+FOODS[nextType()].label+'.');}
+  function mistake(text){playSfx('wrong');lives--;burst(player,H-227-CFG.stackGap-stack.length*CFG.stackGap,false);message(text);ticket();if(lives<=0)endRun('Three wrong catches. Josh has been promoted to customer.');}
   function spawn(){
     const roll=Math.random();
-    if(elapsed>4&&roll<CFG.hazardChance+CFG.kChance){
-      const special=roll<CFG.hazardChance?'hazard':'k';
-      items.push({type:special,hazard:Math.floor(Math.random()*HAZARDS.length),x:65+Math.random()*Math.max(1,W-130),y:-60,speed:CFG.speed+Math.min(level-1,12)*10});return;
+    const haz=CFG.hazardChance+Math.min(.20,(level-1)*.022);
+    if(elapsed>4&&roll<haz+CFG.kChance){
+      const special=roll<haz?'hazard':'k';
+      items.push({type:special,hazard:Math.floor(Math.random()*HAZARDS.length),x:65+Math.random()*Math.max(1,W-130),y:-60,speed:CFG.speed+Math.min(level-1,12)*16});return;
     }
-const remaining=types.filter(t=>got[t]<needs[t]);let type;if(complete())type=Math.random()<.5?'bun':types[Math.floor(Math.random()*types.length)];else if(Math.random()<.62)type=remaining[Math.floor(Math.random()*remaining.length)];else type=Math.random()<.25?'bun':types[Math.floor(Math.random()*types.length)];items.push({type,x:65+Math.random()*Math.max(1,W-130),y:-40,speed:CFG.speed+Math.min(level-1,12)*13+Math.random()*24});}
-  function step(dt){elapsed+=dt;runClock+=dt;heartTime=Math.max(0,heartTime-dt);if(keys.has('arrowleft')||keys.has('a'))target=player-CFG.moveSpeed*dt;if(keys.has('arrowright')||keys.has('d'))target=player+CFG.moveSpeed*dt;target=Math.max(60,Math.min(W-60,target));if(Math.abs(target-player)>1.5)direction=target>player?1:-1;player+=(target-player)*Math.min(1,dt*20);spawnClock-=dt;if(spawnClock<=0){spawn();spawnClock=Math.max(.42,CFG.spawnEvery-(level-1)*.025);}const catchY=H-227-stack.length*CFG.stackGap;for(const it of items){const prev=it.y;it.y+=it.speed*dt;if(prev<=catchY&&it.y>=catchY&&Math.abs(it.x-player)<CFG.catchWidth){it.dead=true;catchItem(it);if(mode!=='playing')break;}if(it.y>H+50)it.dead=true;}items=items.filter(it=>!it.dead);}
+const want=complete()?'bun':nextType();const pick=Math.random();let type;if(pick<.58)type=want;else if(pick<.72)type='bun';else type=types[Math.floor(Math.random()*types.length)];items.push({type,x:65+Math.random()*Math.max(1,W-130),y:-40,speed:CFG.speed+Math.min(level-1,12)*26+Math.random()*30});}
+  function step(dt){elapsed+=dt;runClock+=dt;heartTime=Math.max(0,heartTime-dt);if(keys.has('arrowleft')||keys.has('a'))target=player-CFG.moveSpeed*dt;if(keys.has('arrowright')||keys.has('d'))target=player+CFG.moveSpeed*dt;target=Math.max(60,Math.min(W-60,target));if(Math.abs(target-player)>1.5)direction=target>player?1:-1;player+=(target-player)*Math.min(1,dt*20);spawnClock-=dt;if(spawnClock<=0){spawn();spawnClock=Math.max(.30,CFG.spawnEvery-(level-1)*.075);}const catchY=H-227-CFG.stackGap-stack.length*CFG.stackGap;for(const it of items){const prev=it.y;it.y+=it.speed*dt;if(prev<=catchY&&it.y>=catchY&&Math.abs(it.x-player)<CFG.catchWidth){it.dead=true;catchItem(it);if(mode!=='playing')break;}if(it.y>H+50)it.dead=true;}items=items.filter(it=>!it.dead);}
   function roundRect(x,y,w,h,r,fill,stroke){r=Math.max(0,Math.min(r,w/2,h/2));ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=3;ctx.stroke();}}
   function drawKitchen(){
     ctx.fillStyle='#f6e5ea';ctx.fillRect(0,0,W,H);
@@ -155,7 +158,7 @@ const remaining=types.filter(t=>got[t]<needs[t]);let type;if(complete())type=Mat
   function draw(){ctx.clearRect(0,0,W,H);drawKitchen();
     ctx.fillStyle='#24182426';ctx.beginPath();ctx.ellipse(player,H-36,43,9,0,0,7);ctx.fill();
     const bob=mode==='playing'&&Math.abs(target-player)>2?Math.sin(elapsed*18)*2:0;if(josh.complete&&josh.naturalWidth)drawJosh(bob);
-    if(mode!=='dying'&&mode!=='over'){roundRect(player-66,H-215,132,9,5,'#ffffff','#241824');sprite(ctx,'base',player,H-227,112,28);stack.forEach((t,i)=>sprite(ctx,t,player+Math.sin(i*1.4)*2,H-246-i*CFG.stackGap,110,FOODS[t].h));}
+    if(mode!=='dying'&&mode!=='over'){roundRect(player-66,H-215,132,9,5,'#ffffff','#241824');sprite(ctx,'base',player,H-227,112,28);stack.forEach((t,i)=>sprite(ctx,t,player+Math.sin(i*1.4)*2,H-227-CFG.stackGap-i*CFG.stackGap,110,FOODS[t].h));}
     for(const it of items)objectSprite(ctx,it,it.x,it.y);
     for(const p of particles){ctx.globalAlpha=Math.max(0,p.life/.7);ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,6,6);}ctx.globalAlpha=1;
     roundRect(player-27,H-26,56,22,8,'#f32982','#241824');ctx.fillStyle='#ffffff';ctx.textAlign='center';ctx.font='800 11px "Work Sans",Arial,sans-serif';ctx.fillText('JOSH',player,H-11);
