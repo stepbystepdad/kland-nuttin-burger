@@ -1,0 +1,163 @@
+/* Nuttin' Burger v0.5 — isolated draft. No dependencies. Assets injected by build. */
+function installNuttinBurger(win, assets) {
+  'use strict';
+  if (win.NuttinBurger) return;
+  const doc=win.document;
+  const CFG={speed:125,spawnEvery:.78,catchWidth:53,moveSpeed:1800,stackGap:12,lives:3,points:100,hazardChance:.13,kChance:.035,kPoints:500,heartSeconds:3};
+  const FOODS={"bun":{"label":"Top bun","rect":[16,65,500,250],"h":45},"base":{"label":"Bottom bun","rect":[524,84,485,230],"h":28},"patty":{"label":"Patty","rect":[1022,70,506,252],"h":30},"cheese":{"label":"Cheese","rect":[17,380,499,250],"h":20},"lettuce":{"label":"Lettuce","rect":[521,370,507,254],"h":24},"tomato":{"label":"Tomato","rect":[1033,380,483,258],"h":24},"onion":{"label":"Onion","rect":[18,678,499,262],"h":18},"pickles":{"label":"Pickles","rect":[531,680,486,267],"h":18},"sauce":{"label":"Sauce","rect":[1029,679,500,264],"h":16}};
+  const HAZARDS=[{"id":"socks","label":"crusty socks","rect":[10,132,306,407]},{"id":"jocks","label":"dirty jocks","rect":[317,174,356,350]},{"id":"wash","label":"ten-in-one wash","rect":[675,92,220,440]},{"id":"chair","label":"a camping chair","rect":[896,161,327,374]},{"id":"tv","label":"a broken TV","rect":[1223,126,312,409]},{"id":"pizza","label":"mouldy pizza","rect":[9,540,330,391]},{"id":"plant","label":"a dying plant","rect":[340,539,282,396],"clip":[[340,539],[622,539],[622,692],[600,730],[602,935],[340,935]]},{"id":"weights","label":"gym weights","rect":[602,620,341,293],"clip":[[663,620],[943,620],[943,913],[602,913],[602,738]]},{"id":"towel","label":"a dirty towel","rect":[916,552,341,396],"clip":[[959,552],[1257,552],[1257,948],[916,948],[916,817],[957,723]]},{"id":"loofah","label":"a dirty loofah","rect":[1256,566,279,390]}];
+  let direction=1,runClock=0,heartTime=0,deathTime=0,deathReason='';
+  const types=['patty','cheese','lettuce','tomato','onion','pickles','sauce'];
+  let root,canvas,ctx,raf=0,previous=0,active=false,mode='intro',W=800,H=600,player=400,target=400,items=[],stack=[],particles=[],keys=new Set(),level=1,score=0,lives=3,needs={},got={},spawnClock=0,elapsed=0,lastFocus,best=0,resizeObserver,loading;
+  try{best=Number(win.localStorage.getItem('kland-nuttin-best-v1'))||0;}catch(e){}
+  const atlas=new win.Image(),josh=new win.Image();atlas.src=assets.ingredients;josh.src=assets.josh;
+  const hazards=new win.Image(),animation=new win.Image(),kBonus=new win.Image(),kitchen=new win.Image(),runSheet=new win.Image();
+  hazards.src=assets.hazards;animation.src=assets.animation;kBonus.src=assets.k;kitchen.src=assets.kitchen;runSheet.src=assets.run;
+  loading=Promise.all([atlas.decode(),josh.decode(),hazards.decode(),animation.decode(),kBonus.decode(),kitchen.decode(),runSheet.decode()]);loading.catch(()=>{});
+
+  const css=`  #nb-game{position:fixed;inset:0;z-index:2147483000;background:rgba(26,16,32,.62);display:grid;place-items:center;padding:18px;font-family:"Work Sans","Trebuchet MS",Arial,sans-serif;color:#241824;touch-action:none}
+  #nb-game *{box-sizing:border-box}
+  #nb-game button{font:inherit;cursor:pointer;color:inherit}
+  #nb-game button:focus-visible{outline:3px solid #f32982;outline-offset:3px}
+  #nb-game .nb-shell{width:min(1120px,100%);height:min(740px,100%);background:#fff8ee;border:2px solid #241824;border-radius:22px;overflow:hidden;box-shadow:0 18px 0 rgba(243,41,130,.30);display:flex;flex-direction:column}
+  #nb-game .nb-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 20px;background:#241824;color:#fff3f7;border-bottom:2px solid #241824;flex-shrink:0}
+  #nb-game .nb-brand{font-family:"Dela Gothic One","Arial Black",Arial,sans-serif;font-size:21px;letter-spacing:.2px;line-height:1;display:flex;align-items:center;gap:11px}
+  #nb-game .nb-mark{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:#f32982;color:#fff;font-size:18px;flex-shrink:0;box-shadow:0 3px 0 #a30f57}
+  #nb-game .nb-brandtext{display:block}
+  #nb-game .nb-brand small{display:block;font-family:"Work Sans",Arial,sans-serif;font-weight:800;font-size:9.5px;letter-spacing:2.4px;margin-top:6px;color:#ff9fca}
+  #nb-game .nb-toolbar{display:flex;gap:8px}
+  #nb-game .nb-tool{border:1.5px solid rgba(255,159,202,.5);border-radius:11px;background:#3a2740;color:#fff3f7;padding:9px 14px;font-size:12.5px;font-weight:700;min-height:38px;transition:background .12s ease,transform .12s ease}
+  #nb-game .nb-tool:hover{background:#4c3357}
+  #nb-game .nb-tool:active{transform:translateY(1px)}
+  #nb-game .nb-main{display:grid;grid-template-columns:206px minmax(0,1fr);flex:1;min-height:0}
+  #nb-game .nb-ticket{background:#fff3f7;border-right:2px solid rgba(36,24,36,.14);padding:18px 15px;overflow:auto;touch-action:pan-y}
+  #nb-game .nb-ticket h3{font-family:"Dela Gothic One",Arial,sans-serif;font-size:10px;letter-spacing:2px;margin:0 0 8px;color:#c91965}
+  #nb-game .nb-order{font-family:"Dela Gothic One",Arial,sans-serif;font-size:22px;line-height:1.1;margin-bottom:16px;color:#241824}
+  #nb-game .nb-list{display:grid;gap:7px;padding:12px 0;border-top:2px dashed rgba(243,41,130,.34);border-bottom:2px dashed rgba(243,41,130,.34)}
+  #nb-game .nb-food{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:700;min-height:38px;color:#3a2530}
+  #nb-game .nb-food canvas{width:54px;height:32px;flex-shrink:0;filter:drop-shadow(0 2px 0 rgba(36,24,36,.10))}
+  #nb-game .nb-food b{margin-left:auto;font-size:13px;font-weight:800;background:#fff;border:1.5px solid rgba(36,24,36,.16);border-radius:8px;padding:3px 8px}
+  #nb-game .nb-food.done{color:#9a7d8c}
+  #nb-game .nb-food.done b{background:#f32982;border-color:#c91965;color:#fff}
+  #nb-game .nb-note{font-size:12px;line-height:1.5;color:#8a6f7e;margin:12px 0}
+  #nb-game .nb-label{font-family:"Dela Gothic One",Arial,sans-serif;font-size:9.5px;letter-spacing:1.6px;color:#c91965}
+  #nb-game .nb-score{font-family:"Dela Gothic One",Arial,sans-serif;margin-top:6px;font-size:30px;color:#241824}
+  #nb-game .nb-lives{display:flex;justify-content:space-between;align-items:center;gap:4px;color:#f32982;font-size:44px;line-height:1;margin:14px 0}
+  #nb-game .nb-heart{font-size:inherit}#nb-game .nb-heart.lost{color:#e8ccd8}
+  #nb-game .nb-best{font-size:10.5px;font-weight:700;letter-spacing:1px;color:#a98a99}
+  #nb-game .nb-stage{position:relative;overflow:hidden;min-width:0;min-height:0;background:#f2dfe6}
+  #nb-game .nb-canvas{display:block;width:100%;height:100%;touch-action:none;outline:none}
+  #nb-game .nb-message{position:absolute;top:14px;left:50%;transform:translateX(-50%);background:#fff8ee;border:2px solid #241824;border-radius:999px;padding:8px 18px;font-size:12px;font-weight:800;text-align:center;max-width:92%;width:max-content;pointer-events:none;box-shadow:0 3px 0 rgba(243,41,130,.35)}
+  #nb-game .nb-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(26,16,32,.5);padding:20px}
+  #nb-game .nb-overlay[hidden]{display:none}
+  #nb-game .nb-card{max-width:390px;width:100%;text-align:center;background:#fff8ee;border:2px solid #241824;border-radius:20px;padding:26px 24px;box-shadow:0 10px 0 rgba(243,41,130,.55)}
+  #nb-game .nb-card .eyebrow{font-size:10px;letter-spacing:2.4px;color:#c91965;font-weight:800}
+  #nb-game .nb-card h2{font-family:"Dela Gothic One",Arial,sans-serif;font-size:31px;letter-spacing:-.5px;line-height:1.05;margin:10px 0 12px;color:#241824}
+  #nb-game .nb-card p{font-size:13.5px;line-height:1.55;margin:0 0 18px;color:#5a4450}
+  #nb-game .nb-primary{border:2px solid #241824;border-radius:12px;background:#f32982;color:#fff;padding:13px 26px;font-size:14.5px;font-weight:800;box-shadow:0 4px 0 #a30f57;transition:transform .12s ease,background .12s ease}
+  #nb-game .nb-primary:hover{background:#ff3d90}
+  #nb-game .nb-primary:active{transform:translateY(2px);box-shadow:0 2px 0 #a30f57}
+  #nb-game .nb-primary:disabled{opacity:.5;box-shadow:none}
+  #nb-game .nb-foot{padding:9px 16px;background:#241824;color:#ffd7e6;display:flex;justify-content:space-between;gap:10px;font-size:10.5px;flex-shrink:0}
+  #nb-game .nb-foot b{color:#ff9fca}
+  @media(max-width:700px){#nb-game{padding:8px}#nb-game .nb-shell{border-radius:16px;box-shadow:0 12px 0 rgba(243,41,130,.30)}#nb-game .nb-head{padding:10px 14px}#nb-game .nb-brand{font-size:17px}#nb-game .nb-mark{width:29px;height:29px;font-size:15px}#nb-game .nb-brand small{font-size:8px;letter-spacing:2px}#nb-game .nb-main{grid-template-columns:160px minmax(0,1fr)}#nb-game .nb-ticket{padding:12px 11px}#nb-game .nb-order{font-size:18px;margin-bottom:10px}#nb-game .nb-food{gap:6px;font-size:12px;min-height:34px}#nb-game .nb-food canvas{width:46px;height:27px}#nb-game .nb-card{padding:20px}#nb-game .nb-card h2{font-size:25px}#nb-game .nb-note{font-size:10.5px}#nb-game .nb-score{font-size:24px}}
+  @media(max-width:480px) and (min-height:471px){#nb-game{padding:6px}#nb-game .nb-main{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}#nb-game .nb-ticket{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 10px;border-right:0;border-bottom:2px solid rgba(36,24,36,.14);padding:10px 12px 12px;background:#fff3f7}#nb-game .nb-ticket h3,#nb-game .nb-note,#nb-game .nb-best,#nb-game .nb-label,#nb-game .nb-lives{display:none}#nb-game .nb-order{grid-column:1;grid-row:1;font-size:16px;margin:0}#nb-game .nb-score{grid-column:2;grid-row:1;font-size:20px;margin:0}#nb-game .nb-list{grid-column:1/-1;grid-row:2;display:flex;gap:9px;margin-top:9px;padding:0;border:0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}#nb-game .nb-list::-webkit-scrollbar{display:none}#nb-game .nb-food{flex:0 0 auto;flex-direction:column;justify-content:flex-start;gap:3px;min-width:78px;min-height:0;padding:9px 11px;background:#fff8ee;border:1.5px solid rgba(36,24,36,.14);border-radius:14px}#nb-game .nb-food canvas{width:62px;height:37px}#nb-game .nb-food span{font-size:11px;font-weight:700;text-align:center}#nb-game .nb-food b{margin:0;font-size:11px;padding:2px 7px;border-radius:7px}#nb-game .nb-foot span:last-child{display:none}}
+  @media(max-height:470px){#nb-game{padding:5px}#nb-game .nb-head{padding:6px 12px}#nb-game .nb-brand{font-size:16px}#nb-game .nb-brand small{display:none}#nb-game .nb-mark{width:26px;height:26px;font-size:14px}#nb-game .nb-main{grid-template-columns:152px minmax(0,1fr)}#nb-game .nb-ticket{padding:8px 11px}#nb-game .nb-order{font-size:16px;margin-bottom:5px}#nb-game .nb-list{padding:5px 0;gap:2px}#nb-game .nb-food{min-height:26px;font-size:11px}#nb-game .nb-food canvas{width:40px;height:24px}#nb-game .nb-note{margin:5px 0;font-size:10px}#nb-game .nb-score{font-size:22px;margin-top:4px}#nb-game .nb-lives{font-size:15px;margin:3px 0}#nb-game .nb-card{padding:14px 20px;max-width:410px}#nb-game .nb-card h2{font-size:23px;margin:6px 0}#nb-game .nb-card p{font-size:12px;margin-bottom:10px}#nb-game .nb-primary{padding:9px 19px}#nb-game .nb-foot{padding:5px 10px;font-size:10px}#nb-game .nb-message{top:8px;font-size:10px;padding:5px 12px}}
+`;
+  function el(tag,cls,text){const e=doc.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e;}
+  function ensureFonts(){if(doc.getElementById('nb-fonts'))return;const l=doc.createElement('link');l.id='nb-fonts';l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Work+Sans:wght@400;600;700;800;900&display=swap';doc.head.append(l);}
+  const SFX={right:assets.sfxRight,wrong:assets.sfxWrong,k:assets.sfxK,level:assets.sfxLevel,over:assets.sfxOver};
+  const sfxPlayers={};let soundOn=true;try{soundOn=win.localStorage.getItem('kland-nuttin-sound-v1')!=='0';}catch(e){}
+  function setupAudio(){for(const n in SFX){const url=SFX[n];if(!url||sfxPlayers[n])continue;const a=new win.Audio(url);a.preload='auto';a.volume=n==='level'?.5:n==='k'?.6:.55;sfxPlayers[n]=a;}}
+  function playSfx(n){if(!soundOn)return;const base=sfxPlayers[n];if(!base)return;try{const a=base.cloneNode();a.volume=base.volume;const pr=a.play();if(pr&&pr.catch)pr.catch(()=>{});}catch(e){}}
+  function sprite(c,type,x,y,w=106,h=FOODS[type].h){if(!atlas.complete||!atlas.naturalWidth)return;const r=FOODS[type].rect;c.drawImage(atlas,...r,x-w/2,y-h/2,w,h);}
+  function objectSprite(c,it,x,y){
+    if(it.type==='hazard'){
+      const h=HAZARDS[it.hazard],r=h.rect,scale=80/Math.max(r[2],r[3]),dx=x-r[2]*scale/2,dy=y-r[3]*scale/2;
+      c.save();if(h.clip){c.beginPath();h.clip.forEach(([px,py],i)=>c[i?'lineTo':'moveTo'](dx+(px-r[0])*scale,dy+(py-r[1])*scale));c.closePath();c.clip();}
+      c.drawImage(hazards,...r,dx,dy,r[2]*scale,r[3]*scale);c.restore();
+      return;
+    }
+    if(it.type==='k'){
+      c.save();c.strokeStyle='#f32982';c.lineWidth=3;c.beginPath();c.arc(x,y,37,0,Math.PI*2);c.stroke();c.drawImage(kBonus,x-40,y-42,80,80);c.fillStyle='#c91965';c.font='800 11px "Work Sans",Arial,sans-serif';c.textAlign='center';c.fillText('+500',x,y+48);c.restore();return;
+    }
+    sprite(c,it.type,x,y,106,FOODS[it.type].h+5);
+  }
+  const RUN_FRAMES=[{"rect":[0,0,512,512],"anchor":[286,497],"pose":"Near leg forward; far leg trailing"},{"rect":[512,0,512,512],"anchor":[256,507],"pose":"Near leg supports; far knee passes forward"},{"rect":[0,512,512,512],"anchor":[284,486],"pose":"Far leg forward; near leg trailing"},{"rect":[512,512,512,512],"anchor":[257,495],"pose":"Far leg supports; near knee passes forward"}];
+  function drawJosh(bob){
+    if(mode==='dying'||mode==='over'||heartTime>0||Math.abs(target-player)>1.5||keys.has('arrowleft')||keys.has('arrowright')||keys.has('a')||keys.has('d')){
+      const dying=mode==='dying'||mode==='over';const row=dying?1:heartTime>0?2:0;
+      const col=dying?Math.min(3,Math.floor(deathTime*5)):heartTime>0?Math.floor((CFG.heartSeconds-heartTime)*6)%4:Math.floor(runClock*9)%4;
+      if(row===0){const f=RUN_FRAMES[col],scale=.355;ctx.save();ctx.translate(player,H-36);if(direction<0)ctx.scale(-1,1);ctx.drawImage(runSheet,...f.rect,-f.anchor[0]*scale,-f.anchor[1]*scale,512*scale,512*scale);ctx.restore();return;}
+      const sy=[0,370,701][row],sh=[368,331,323][row],scale=[.47,.47,.53][row];
+      const anchorX=row===0?[211,220,206,210][col]:row===1?[184,179,180,193][col]:[197,197,198,188][col];
+      const baseline=row===0?368:row===1?324:321;
+      ctx.save();ctx.translate(player,H-36);if(row===0&&direction<0)ctx.scale(-1,1);
+      ctx.drawImage(animation,col*384,sy,384,sh,-anchorX*scale,-baseline*scale,384*scale,sh*scale);ctx.restore();
+    }else ctx.drawImage(josh,263,129,685,1049,player-55,H-204+bob,110,168);
+  }
+  function endRun(reason){if(mode!=='playing')return;lives=0;deathReason=reason;deathTime=0;heartTime=0;keys.clear();mode='dying';ticket();message(reason);}
+  function finishDeath(){playSfx('over');mode='over';overlay('You’re cooked.',deathReason+' '+score+' points. '+(level-1)+' orders served.','Try again',start);}
+  function ticket(){root.querySelector('.nb-order').textContent='Order '+String(level).padStart(2,'0');const list=root.querySelector('.nb-list');list.replaceChildren();for(const t of types){if(!needs[t])continue;const row=el('div','nb-food'+(got[t]>=needs[t]?' done':''));const icon=el('canvas');icon.width=110;icon.height=64;const c=icon.getContext('2d');sprite(c,t,55,32,103,47);row.append(icon,el('span','',FOODS[t].label),el('b','',got[t]+'/'+needs[t]));list.append(row);}root.querySelector('.nb-score').textContent=score.toLocaleString();const livesEl=root.querySelector('.nb-lives');livesEl.replaceChildren();for(let i=0;i<CFG.lives;i++){livesEl.append(el('span','nb-heart'+(i<lives?'':' lost'),i<lives?'♥':'♡'));}livesEl.setAttribute('aria-label',lives+' chances left');root.querySelector('.nb-best').textContent='PERSONAL BEST '+best;root.querySelector('.nb-note').textContent=complete()?'Order ready! Catch a sesame top bun.':'Any order is fine. Dodge extras and save the top bun for last.';}
+  function complete(){return types.every(t=>got[t]>=needs[t]);}
+  function message(text){root.querySelector('.nb-message').textContent=text;}
+  function overlay(title,copy,label,action){const over=root.querySelector('.nb-overlay');over.hidden=false;over.querySelector('h2').textContent=title;over.querySelector('p').textContent=copy;const b=over.querySelector('button');b.textContent=label;b.disabled=false;b.onclick=action;b.focus();}
+  function hideOverlay(){root.querySelector('.nb-overlay').hidden=true;canvas.focus();}
+  function order(){needs={patty:1+Math.min(2,Math.floor((level-1)/3)),cheese:1,lettuce:level>=2?1:0,tomato:level>=3?1:0,onion:level>=4?1:0,pickles:level>=5?1:0,sauce:level>=6?1:0};if(level>=5)needs[types[level%types.length]]++;got=Object.fromEntries(types.map(t=>[t,0]));items=[];stack=[];particles=[];spawnClock=.4;elapsed=0;player=W/2;target=player;ticket();message('Catch the ingredients on your ticket');}
+  function start(){level=1;score=0;lives=CFG.lives;heartTime=0;deathTime=0;runClock=0;direction=1;order();mode='playing';hideOverlay();}
+  function pause(){if(mode!=='playing')return;mode='paused';keys.clear();overlay('On your break.','Your burger can wait. Your situationship probably can’t.','Back to work',()=>{mode='playing';hideOverlay();});}
+  function close(){if(!active)return;active=false;win.cancelAnimationFrame(raf);resizeObserver?.disconnect();win.removeEventListener('resize',resize);win.removeEventListener('keydown',keydown,true);win.removeEventListener('keyup',keyup,true);doc.removeEventListener('visibilitychange',visibility);win.removeEventListener('blur',blur);root.remove();doc.querySelector('#nb-styles')?.remove();root=null;keys.clear();lastFocus?.focus?.();}
+  function visibility(){if(doc.hidden)pause();}function blur(){keys.clear();pause();}
+  function keydown(e){if(!active)return;if(['ArrowLeft','ArrowRight','a','A','d','D','Escape',' ','p','P','Tab'].includes(e.key)){e.stopImmediatePropagation();if(e.key!=='Tab')e.preventDefault();}if(e.key==='Escape'){close();return;}if(e.key==='Tab'){const focusables=[...root.querySelectorAll('button:not(:disabled),canvas[tabindex]')].filter(n=>n.getClientRects().length);const first=focusables[0],last=focusables[focusables.length-1];if(e.shiftKey&&doc.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&doc.activeElement===last){e.preventDefault();first.focus();}return;}if(e.key==='p'||e.key==='P'||(e.key===' '&&doc.activeElement===canvas))pause();keys.add(e.key.toLowerCase());}
+  function keyup(e){if(['arrowleft','arrowright','a','d'].includes(e.key.toLowerCase())){e.stopImmediatePropagation();e.preventDefault();}keys.delete(e.key.toLowerCase());}
+  function resize(){const r=canvas.getBoundingClientRect(),ratio=Math.min(win.devicePixelRatio||1,2);canvas.width=Math.max(1,Math.round(r.width*ratio));canvas.height=Math.max(1,Math.round(r.height*ratio));const old=W;W=600*r.width/Math.max(r.height,1);H=600;player*=W/old;target=player;for(const it of items)it.x*=W/old;ctx.setTransform(canvas.width/W,0,0,canvas.height/H,0,0);}
+  function burst(x,y,good){for(let i=0;i<12;i++)particles.push({x,y,vx:(Math.random()-.5)*160,vy:-60-Math.random()*160,life:.7,color:good?'#f6bc36':'#a72044'});}
+  function catchItem(it){
+    if(it.type==='hazard'){playSfx('wrong');endRun('Taken out by '+HAZARDS[it.hazard].label+'. Instant game over.');return;}
+    if(it.type==='k'){playSfx('k');
+      score+=CFG.kPoints;lives=Math.min(CFG.lives,lives+1);heartTime=CFG.heartSeconds;
+      best=Math.max(best,score);try{win.localStorage.setItem('kland-nuttin-best-v1',String(best));}catch(e){}
+      burst(player,it.y,true);message('CAUGHT FEELINGS! +500 points · +1 life');ticket();return;
+    }
+if(it.type==='bun'){if(complete()){playSfx('level');stack.push('bun');score+=CFG.points*level;best=Math.max(best,score);try{win.localStorage.setItem('kland-nuttin-best-v1',String(best));}catch(e){}mode='won';ticket();burst(player,it.y,true);message('Order up!');overlay('Big stack energy.',`Order ${level} served. ${score} points. Josh is absolutely putting “executive chef” in his bio.`,'Next order',()=>{level++;order();mode='playing';hideOverlay();});}else mistake('Too soon! Save the top bun for last.');return;}if(got[it.type]<needs[it.type]){playSfx('right');got[it.type]++;stack.push(it.type);burst(player,it.y,true);message(complete()?'Perfect. Now catch a top bun!':'Nice catch. Keep stacking.');ticket();}else mistake('Not on the ticket! Dodge the extras.');}
+  function mistake(text){playSfx('wrong');lives--;burst(player,H-227-stack.length*CFG.stackGap,false);message(text);ticket();if(lives<=0)endRun('Three wrong catches. Josh has been promoted to customer.');}
+  function spawn(){
+    const roll=Math.random();
+    if(elapsed>4&&roll<CFG.hazardChance+CFG.kChance){
+      const special=roll<CFG.hazardChance?'hazard':'k';
+      items.push({type:special,hazard:Math.floor(Math.random()*HAZARDS.length),x:65+Math.random()*Math.max(1,W-130),y:-60,speed:CFG.speed+Math.min(level-1,12)*10});return;
+    }
+const remaining=types.filter(t=>got[t]<needs[t]);let type;if(complete())type=Math.random()<.5?'bun':types[Math.floor(Math.random()*types.length)];else if(Math.random()<.62)type=remaining[Math.floor(Math.random()*remaining.length)];else type=Math.random()<.25?'bun':types[Math.floor(Math.random()*types.length)];items.push({type,x:65+Math.random()*Math.max(1,W-130),y:-40,speed:CFG.speed+Math.min(level-1,12)*13+Math.random()*24});}
+  function step(dt){elapsed+=dt;runClock+=dt;heartTime=Math.max(0,heartTime-dt);if(keys.has('arrowleft')||keys.has('a'))target=player-CFG.moveSpeed*dt;if(keys.has('arrowright')||keys.has('d'))target=player+CFG.moveSpeed*dt;target=Math.max(60,Math.min(W-60,target));if(Math.abs(target-player)>1.5)direction=target>player?1:-1;player+=(target-player)*Math.min(1,dt*20);spawnClock-=dt;if(spawnClock<=0){spawn();spawnClock=Math.max(.42,CFG.spawnEvery-(level-1)*.025);}const catchY=H-227-stack.length*CFG.stackGap;for(const it of items){const prev=it.y;it.y+=it.speed*dt;if(prev<=catchY&&it.y>=catchY&&Math.abs(it.x-player)<CFG.catchWidth){it.dead=true;catchItem(it);if(mode!=='playing')break;}if(it.y>H+50)it.dead=true;}items=items.filter(it=>!it.dead);}
+  function roundRect(x,y,w,h,r,fill,stroke){r=Math.max(0,Math.min(r,w/2,h/2));ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=3;ctx.stroke();}}
+  function drawKitchen(){
+    ctx.fillStyle='#f6e5ea';ctx.fillRect(0,0,W,H);
+    if(!kitchen.complete||!kitchen.naturalWidth)return;
+    const scale=Math.max(W/kitchen.naturalWidth,H/kitchen.naturalHeight);
+    const width=kitchen.naturalWidth*scale,height=kitchen.naturalHeight*scale;
+    ctx.drawImage(kitchen,(W-width)/2,H-height,width,height);
+  }
+  function draw(){ctx.clearRect(0,0,W,H);drawKitchen();
+    ctx.fillStyle='#24182426';ctx.beginPath();ctx.ellipse(player,H-36,43,9,0,0,7);ctx.fill();
+    const bob=mode==='playing'&&Math.abs(target-player)>2?Math.sin(elapsed*18)*2:0;if(josh.complete&&josh.naturalWidth)drawJosh(bob);
+    if(mode!=='dying'&&mode!=='over'){roundRect(player-66,H-215,132,9,5,'#ffffff','#241824');sprite(ctx,'base',player,H-227,112,28);stack.forEach((t,i)=>sprite(ctx,t,player+Math.sin(i*1.4)*2,H-246-i*CFG.stackGap,110,FOODS[t].h));}
+    for(const it of items)objectSprite(ctx,it,it.x,it.y);
+    for(const p of particles){ctx.globalAlpha=Math.max(0,p.life/.7);ctx.fillStyle=p.color;ctx.fillRect(p.x,p.y,6,6);}ctx.globalAlpha=1;
+    roundRect(player-27,H-26,56,22,8,'#f32982','#241824');ctx.fillStyle='#ffffff';ctx.textAlign='center';ctx.font='800 11px "Work Sans",Arial,sans-serif';ctx.fillText('JOSH',player,H-11);
+  }
+  function frame(now){if(!active)return;const dt=Math.min((now-previous)/1000||0,.035);previous=now;if(mode==='playing')step(dt);if(mode==='dying'){deathTime+=dt;if(deathTime>=1.05)finishDeath();}if(mode!=='paused'){for(const p of particles){p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=400*dt;}particles=particles.filter(p=>p.life>0);}draw();raf=win.requestAnimationFrame(frame);}
+  function open(){if(active)return;active=true;lastFocus=doc.activeElement;ensureFonts();setupAudio();win.KLandPopupPass?.stopPreview();root=el('div');root.id='nb-game';root.setAttribute('role','dialog');root.setAttribute('aria-modal','true');root.setAttribute('aria-labelledby','nb-title');root.innerHTML=`<div class="nb-shell"><header class="nb-head"><div class="nb-brand" id="nb-title"><span class="nb-mark" aria-hidden="true">🍔</span><span class="nb-brandtext">NUTTIN’ BURGER<small>JOSH’S HIGH-STACK SHIFT</small></span></div><div class="nb-toolbar"><button class="nb-tool nb-sound" aria-label="Sound on" aria-pressed="true">🔊</button><button class="nb-tool nb-pause" aria-label="Pause game">Pause</button><button class="nb-tool nb-close" aria-label="Close burger game">✕ Close</button></div></header><div class="nb-main"><aside class="nb-ticket"><h3>KITCHEN TICKET</h3><div class="nb-order">Order 01</div><div class="nb-list"></div><p class="nb-note"></p><div class="nb-label">SHIFT SCORE</div><div class="nb-score">0</div><div class="nb-lives"></div><div class="nb-best"></div></aside><div class="nb-stage"><canvas class="nb-canvas" tabindex="0" aria-label="Move Josh with left and right arrow keys or drag to catch burger ingredients"></canvas><div class="nb-message" role="status" aria-live="polite">Catch feelings? Try ingredients.</div><div class="nb-overlay"><div class="nb-card"><div class="eyebrow">NUTTIN’ BUT A GOOD SHIFT</div><h2></h2><p></p><button class="nb-primary"></button></div></div></div></div><footer class="nb-foot"><span><b>DRAG</b> to move · <b>← → / A D</b> on keyboard</span><span>Lore junk = instant death · K = +500 / +1 life</span></footer></div>`;
+    const style=el('style');style.id='nb-styles';style.textContent=css;doc.head.append(style);doc.body.append(root);canvas=root.querySelector('canvas.nb-canvas');ctx=canvas.getContext('2d');root.querySelector('.nb-close').onclick=close;root.querySelector('.nb-pause').onclick=()=>{if(mode==='paused'){mode='playing';hideOverlay();}else pause();};const sndBtn=root.querySelector('.nb-sound');const syncSound=()=>{sndBtn.textContent=soundOn?'🔊':'🔇';sndBtn.setAttribute('aria-pressed',String(soundOn));sndBtn.setAttribute('aria-label',soundOn?'Sound on':'Sound off');};syncSound();sndBtn.onclick=()=>{soundOn=!soundOn;try{win.localStorage.setItem('kland-nuttin-sound-v1',soundOn?'1':'0');}catch(e){}syncSound();};
+    let dragging=false;const move=e=>{const r=canvas.getBoundingClientRect();target=(e.clientX-r.left)*W/r.width;};canvas.onpointerdown=e=>{if(mode!=='playing')return;dragging=true;try{canvas.setPointerCapture(e.pointerId);}catch(err){}move(e);e.preventDefault();};canvas.onpointermove=e=>{if(mode==='playing'&&(dragging||e.pointerType==='mouse'))move(e);};canvas.onpointerup=canvas.onpointercancel=()=>dragging=false;
+    win.addEventListener('keydown',keydown,true);win.addEventListener('keyup',keyup,true);doc.addEventListener('visibilitychange',visibility);win.addEventListener('blur',blur);if(win.ResizeObserver){resizeObserver=new win.ResizeObserver(resize);resizeObserver.observe(canvas);}else{win.addEventListener('resize',resize);}resize();level=1;score=0;lives=CFG.lives;order();mode='intro';overlay('A job for Josh. Finally.',"Catch your order, then the top bun. Lore junk = instant game over. Catch K for +500, +1 life and heart eyes!",'Loading sprites…',()=>{});root.querySelector('.nb-primary').disabled=true;
+    loading.then(()=>{if(!active)return;ticket();overlay('A job for Josh. Finally.',"Catch your order, then the top bun. Lore junk = instant game over. Catch K for +500, +1 life and heart eyes!",'Start shift',start);}).catch(()=>{if(active)overlay('Kitchen delay.','The sprites could not load. Close and try again.','Close',close);});previous=0;raf=win.requestAnimationFrame(frame);
+  }
+  win.NuttinBurger={version:'0.5.0',open,close,config:CFG};
+  // Nuttin' Burger opens the game only: no landmark story panel, video embed or Spotify player.
+  function clearStory(){const ps=doc.getElementById('panel-story');if(ps)ps.classList.remove('open');doc.querySelectorAll('#story iframe').forEach(e=>e.remove());}
+  if(typeof win.showPlace==='function'){const original=win.showPlace;win.showPlace=function(id,...args){if(id==='nuttin-burger'){try{win.KLandPopupPass&&win.KLandPopupPass.stopPreview&&win.KLandPopupPass.stopPreview();}catch(e){}clearStory();open();return;}return original.call(this,id,...args);};}
+  const story=doc.getElementById('story');
+  if(story&&story.dataset.place==='nuttin-burger'){clearStory();open();}
+}
+
+(function(){const assets={"ingredients":"https://cdn.jsdelivr.net/gh/stepbystepdad/kland-nuttin-burger@main/ingredients.webp","josh":"https://cdn.jsdelivr.net/gh/stepbystepdad/kland-nuttin-burger@main/josh.webp","hazards":"https://cdn.jsdelivr.net/gh/stepbystepdad/kland-nuttin-burger@main/hazards.webp","animation":"https://cdn.jsdelivr.net/gh/stepbystepdad/kland-nuttin-burger@main/animation.webp","k":"https://cdn.jsdelivr.net/gh/stepbystepdad/kland-nuttin-burger@main/k.webp","kitchen":"https://cdn.jsdelivr.net/gh/stepbystepdad/kland-nuttin-burger@main/kitchen.webp","run":"https://cdn.jsdelivr.net/gh/stepbystepdad/kland-nuttin-burger@main/run.webp","sfxRight":"https://cdn.jsdelivr.net/gh/stepbystepdad/kland-nuttin-burger@main/sfx-right.mp3","sfxWrong":"https://cdn.jsdelivr.net/gh/stepbystepdad/kland-nuttin-burger@main/sfx-wrong.mp3","sfxK":"https://cdn.jsdelivr.net/gh/stepbystepdad/kland-nuttin-burger@main/sfx-k.mp3","sfxLevel":"https://cdn.jsdelivr.net/gh/stepbystepdad/kland-nuttin-burger@main/sfx-level.mp3","sfxOver":"https://cdn.jsdelivr.net/gh/stepbystepdad/kland-nuttin-burger@main/sfx-over.mp3"};function install(){const f=document.getElementById("ku-map-frame");if(f){try{const w=f.contentWindow;if(w&&w.document&&w.document.readyState==="complete"&&typeof w.showPlace==="function"){installNuttinBurger(w,assets);return true;}}catch(e){}return false;}if(typeof window.showPlace==="function"){try{installNuttinBurger(window,assets);return true;}catch(e){}}return false;}if(install())return;let tries=0;const timer=setInterval(()=>{if(install()||++tries>240)clearInterval(timer);},500);})();
